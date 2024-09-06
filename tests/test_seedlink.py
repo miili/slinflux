@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 
 from slinflux.models.stations import SeedlinkStream
@@ -20,14 +18,9 @@ def test_station():
     print(sls)
 
 
-def test_stream():
-    sl = Seedlink(host="geofon.gfz-potsdam.de")
-    asyncio.run(sl.stream())
-
-
 @pytest.mark.asyncio
 async def test_stream_traces():
     sl = Seedlink(host="geofon.gfz-potsdam.de")
-    async for st in sl.iter_stream():
+    async for st in sl.iter_streams():
         print(st)
         assert st

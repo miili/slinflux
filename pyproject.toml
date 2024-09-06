@@ -7,11 +7,16 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.8.2",
     "obspy>=1.4.1",
+    "aiohttp>=3.10.5",
+    "typer>=0.12.5",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project.scripts]
+slinflux = "slinflux.cli:main"
 
 [tool.uv]
 dev-dependencies = [

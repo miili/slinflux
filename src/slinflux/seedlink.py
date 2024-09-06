@@ -1,16 +1,18 @@
 import asyncio
 import logging
 import subprocess
+from collections.abc import AsyncGenerator
+from datetime import timedelta
 from io import BytesIO
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import TYPE_CHECKING
 
 from obspy import read
 from pydantic import BaseModel, PositiveInt
 
-from slinflux.models.stations import SeedlinkStream
+from slinflux.models.stations import SeedlinkStation, SeedlinkStream
 
 if TYPE_CHECKING:
-    from obspy import Stream
+    pass
 
 logger = logging.getLogger(__name__)
 RECORD_LENGTH = 512
@@ -28,7 +30,9 @@ class Seedlink(BaseModel):
     host: str = "127.0.0.1"
     port: PositiveInt = 18000
 
-    stations: list[str] = ["2D_BEMS", "2D_DREA"]
+    station_selection: list[str] = ["1D_SYRAU"]
+
+    stations: dict[tuple[str, str, str], SeedlinkStation] = {}
 
     @property
     def _slink_host(self) -> str:
@@ -40,8 +44,21 @@ class Seedlink(BaseModel):
 
         return [SeedlinkStream.from_line(line.decode()) for line in ret.splitlines()]
 
-    async def stream(self):
-        selector = ",".join(self.stations)
+    def get_station(self, network: str, station: str, location: str) -> SeedlinkStation:
+        key = (network, station, location)
+        if key not in self.stations:
+            self.stations[key] = SeedlinkStation(
+                network=network,
+                station=station,
+                location=location,
+            )
+
+        return self.stations[key]
+
+    async def iter_streams(
+        self, length: float = 20.0
+    ) -> AsyncGenerator[SeedlinkStation]:
+        selector = ",".join(self.station_selection)
 
         logger.info(f"streaming: {selector}")
         proc = await asyncio.subprocess.create_subprocess_exec(
@@ -55,13 +72,30 @@ class Seedlink(BaseModel):
             stderr=asyncio.subprocess.PIPE,
         )
 
-        while True:
-            print("waiting for data")
-            data = await proc.stdout.read(RECORD_LENGTH)
-            trace_data = BytesIO(data)
-            st = read(trace_data, format="mseed")
-            print(st)
-            for tr in st:
-                print(tr.stats.mseed)
+        try:
+            while True:
+                logger.debug("waiting for data")
+                data = await proc.stdout.read(RECORD_LENGTH)
+                trace_data = BytesIO(data)
+                st = read(trace_data, format="mseed")
 
-    async def iter_stream(self) -> AsyncGenerator[Stream]: ...
+                if len(st) != 1:
+                    raise ValueError(f"Expected 1 trace, got {len(st)}")
+
+                trace = st[0]
+                stats = trace.stats
+
+                station = self.get_station(stats.network, stats.station, stats.location)
+                station.add_trace(trace, mseed=data)
+
+                try:
+                    st = station.get_tail(length=timedelta(seconds=length))
+                    print(st)
+                    yield st
+                except ValueError:
+                    continue
+        except asyncio.CancelledError:
+            proc.terminate()
+            raise
+
+    # async def iter_stream(self) -> AsyncGenerator[Stream]: ...
