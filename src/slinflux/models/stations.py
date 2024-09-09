@@ -128,5 +128,5 @@ class StationSelection(BaseModel):
     def seedlink_str(self) -> str:
         ret = f"{self.network}_{self.station}"
         if self.location:
-            ret += f":{self.location}"
+            ret += f":{self.location}???"
         return ret
