@@ -1,9 +1,9 @@
 from slinflux.analyzers.base import Analyzer
-from slinflux.models.stations import SeedlinkStation
+from slinflux.models.stations import SeedlinkData
 
 
 class TimingAnalyzer(Analyzer):
-    def analyze(self, station: SeedlinkStation) -> list[str]:
+    def analyze(self, station: SeedlinkData) -> list[str]:
         timing_quality = max(
             [station.get_timing_quality(cha) for cha in station.channels]
         )

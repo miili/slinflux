@@ -7,15 +7,16 @@ from io import BytesIO
 from typing import TYPE_CHECKING
 
 from obspy import read
-from pydantic import BaseModel, PositiveInt
+from pydantic import BaseModel, PositiveInt, PrivateAttr
 
-from slinflux.models.stations import SeedlinkStation, SeedlinkStream
+from slinflux.models.stations import SeedlinkData, SeedlinkStream, StationSelection
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
 RECORD_LENGTH = 512
+BLACKLISTED_CHANNELS = ("LOG",)
 
 
 def call_slinktool(cmd_args: list[str]) -> bytes:
@@ -27,12 +28,12 @@ def call_slinktool(cmd_args: list[str]) -> bytes:
 
 
 class Seedlink(BaseModel):
-    host: str = "127.0.0.1"
+    host: str = "geofon.gfz-potsdam.de"
     port: PositiveInt = 18000
 
-    station_selection: list[str] = ["1D_SYRAU"]
-
-    stations: dict[tuple[str, str, str], SeedlinkStation] = {}
+    _stations: dict[tuple[str, str, str], SeedlinkData] = PrivateAttr(
+        default_factory=dict
+    )
 
     @property
     def _slink_host(self) -> str:
@@ -44,29 +45,31 @@ class Seedlink(BaseModel):
 
         return [SeedlinkStream.from_line(line.decode()) for line in ret.splitlines()]
 
-    def get_station(self, network: str, station: str, location: str) -> SeedlinkStation:
+    def get_station(self, network: str, station: str, location: str) -> SeedlinkData:
         key = (network, station, location)
-        if key not in self.stations:
-            self.stations[key] = SeedlinkStation(
+        if key not in self._stations:
+            self._stations[key] = SeedlinkData(
                 network=network,
                 station=station,
                 location=location,
             )
 
-        return self.stations[key]
+        return self._stations[key]
 
     async def iter_streams(
-        self, length: float = 20.0
-    ) -> AsyncGenerator[SeedlinkStation]:
-        selector = ",".join(self.station_selection)
+        self,
+        stations: list[StationSelection],
+        chunk_length: float = 20.0,
+    ) -> AsyncGenerator[SeedlinkData]:
+        selectors = ",".join(sta.seedlink_str() for sta in stations)
 
-        logger.info(f"streaming: {selector}")
+        logger.info(f"streaming: {selectors}")
         proc = await asyncio.subprocess.create_subprocess_exec(
             "slinktool",
             "-o",
             "-",
             "-S",
-            selector,
+            selectors,
             self._slink_host,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -84,12 +87,14 @@ class Seedlink(BaseModel):
 
                 trace = st[0]
                 stats = trace.stats
+                if stats.channel in BLACKLISTED_CHANNELS:
+                    continue
 
                 station = self.get_station(stats.network, stats.station, stats.location)
                 station.add_trace(trace, mseed=data)
 
                 try:
-                    st = station.get_tail(length=timedelta(seconds=length))
+                    st = station.get_tail(length=timedelta(seconds=chunk_length))
                     print(st)
                     yield st
                 except ValueError:

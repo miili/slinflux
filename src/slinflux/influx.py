@@ -1,5 +1,9 @@
+import logging
+
 import aiohttp
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class InfluxDB(BaseModel):
@@ -18,4 +22,7 @@ class InfluxDB(BaseModel):
                 url,
                 data=data,
             ) as response:
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except aiohttp.ClientResponseError as e:
+                    logger.exception("InfluxDB write failed", exc_info=e)

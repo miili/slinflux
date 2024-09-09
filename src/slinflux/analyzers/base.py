@@ -1,6 +1,6 @@
-from slinflux.models.stations import SeedlinkStation
+from slinflux.models.stations import SeedlinkData
 
 
 class Analyzer:
-    def analyze(self, station: SeedlinkStation) -> str:
+    def analyze(self, station: SeedlinkData) -> str:
         raise NotImplementedError

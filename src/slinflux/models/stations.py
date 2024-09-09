@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from tempfile import NamedTemporaryFile
 from typing import Any
 
 from obspy import Trace, UTCDateTime
 from obspy.io.mseed.util import get_flags
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class SeedlinkStream(BaseModel):
@@ -22,18 +22,22 @@ class SeedlinkStream(BaseModel):
     @classmethod
     def from_line(cls, line: str):
         # ZB VOSXX 00 HHZ D 2021/10/08 04:20:36.4200  -  2021/10/08 11:31:00.220
+        starttime = datetime.strptime(line[18:42], "%Y/%m/%d %H:%M:%S.%f")  # noqa DTZ007
+        endtime = datetime.strptime(line[47:71], "%Y/%m/%d %H:%M:%S.%f")  # noqa DTZ007
+        starttime = starttime.replace(tzinfo=timezone.utc)
+        endtime = endtime.replace(tzinfo=timezone.utc)
         return cls(
             network=line[0:2].strip(),
             station=line[3:8].strip(),
             location=line[9:12].strip(),
             channel=line[12:15].strip(),
             dataquality=line[16],
-            starttime=datetime.strptime(line[18:42], "%Y/%m/%d %H:%M:%S.%f"),
-            endtime=datetime.strptime(line[47:71], "%Y/%m/%d %H:%M:%S.%f"),
+            starttime=starttime,
+            endtime=endtime,
         )
 
 
-class SeedlinkStation(BaseModel):
+class SeedlinkData(BaseModel):
     network: str
     station: str
     location: str
@@ -54,11 +58,19 @@ class SeedlinkStation(BaseModel):
 
     @property
     def start_time(self) -> datetime:
-        return max([trace.stats.starttime.datetime for trace in self._traces.values()])
+        if not self._traces:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        time = max([trace.stats.starttime.datetime for trace in self._traces.values()])
+        time = time.replace(tzinfo=timezone.utc)
+        return time
 
     @property
     def end_time(self) -> datetime:
-        return min([trace.stats.endtime.datetime for trace in self._traces.values()])
+        if not self._traces:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        time = min([trace.stats.endtime.datetime for trace in self._traces.values()])
+        time = time.replace(tzinfo=timezone.utc)
+        return time
 
     @property
     def length(self) -> timedelta:
@@ -68,7 +80,7 @@ class SeedlinkStation(BaseModel):
     def channels(self) -> tuple:
         return tuple(self._traces.keys())
 
-    def get_tail(self, length: timedelta) -> SeedlinkStation:
+    def get_tail(self, length: timedelta) -> SeedlinkData:
         if self.length < length:
             raise ValueError("Requested length is longer than available data")
 
@@ -100,3 +112,21 @@ class SeedlinkStation(BaseModel):
 
     def influx_end_time(self) -> int:
         return int(self.end_time.timestamp() * 1e9)
+
+
+class StationSelection(BaseModel):
+    network: str = Field(
+        default="1D",
+        max_length=2,
+    )
+    station: str = Field(default="SYRAU", max_length=5)
+    location: str = Field(default="", max_length=2)
+
+    lat: float = Field(default=50.45693, ge=-90.0, le=90.0)
+    lon: float = Field(default=12.083366, ge=-180.0, le=180.0)
+
+    def seedlink_str(self) -> str:
+        ret = f"{self.network}_{self.station}"
+        if self.location:
+            ret += f":{self.location}"
+        return ret
