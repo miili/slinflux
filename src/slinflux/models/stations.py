@@ -52,7 +52,7 @@ class SeedlinkData(BaseModel):
             self._traces[channel] = trace
             return
 
-        merged_traces = self._traces[channel].__add__(trace, fill_value=0.0)
+        merged_traces = self._traces[channel].__add__(trace, fill_value=0)
         self._traces[channel] = merged_traces
         self._mseed_bytes[channel] = mseed
 
