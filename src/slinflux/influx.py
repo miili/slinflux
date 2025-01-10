@@ -24,5 +24,5 @@ class InfluxDB(BaseModel):
             ) as response:
                 try:
                     response.raise_for_status()
-                except aiohttp.ClientResponseError as e:
-                    logger.exception("InfluxDB write failed", exc_info=e)
+                except aiohttp.ClientResponseError as exc:
+                    logger.exception("InfluxDB write failed", exc_info=exc)

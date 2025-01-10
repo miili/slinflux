@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from obspy import read
 from pydantic import BaseModel, PositiveInt, PrivateAttr
 
-from slinflux.models.stations import SeedlinkData, SeedlinkStream, StationSelection
+from slinflux.models.stations import SeedLinkData, SeedlinkStream, StationSelection
 
 if TYPE_CHECKING:
     pass
@@ -31,7 +31,7 @@ class Seedlink(BaseModel):
     host: str = "geofon.gfz-potsdam.de"
     port: PositiveInt = 18000
 
-    _stations: dict[tuple[str, str, str], SeedlinkData] = PrivateAttr(
+    _stations: dict[tuple[str, str, str], SeedLinkData] = PrivateAttr(
         default_factory=dict
     )
 
@@ -45,10 +45,10 @@ class Seedlink(BaseModel):
 
         return [SeedlinkStream.from_line(line.decode()) for line in ret.splitlines()]
 
-    def get_station(self, network: str, station: str, location: str) -> SeedlinkData:
+    def get_station(self, network: str, station: str, location: str) -> SeedLinkData:
         key = (network, station, location)
         if key not in self._stations:
-            self._stations[key] = SeedlinkData(
+            self._stations[key] = SeedLinkData(
                 network=network,
                 station=station,
                 location=location,
@@ -60,7 +60,7 @@ class Seedlink(BaseModel):
         self,
         stations: list[StationSelection],
         chunk_length: float = 20.0,
-    ) -> AsyncGenerator[SeedlinkData]:
+    ) -> AsyncGenerator[SeedLinkData]:
         selectors = ",".join(sta.seedlink_str() for sta in stations)
 
         logger.info(f"streaming: {selectors}")

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import NoReturn
 
 from pydantic import BaseModel
 
@@ -35,23 +36,35 @@ class SLInflux(BaseModel):
 
     _monitor_task: asyncio.Task
 
-    async def run(self):
+    def get_station(
+        self,
+        network: str,
+        station: str,
+        location: str,
+    ) -> StationSelection:
+        for sta in self.station_selection:
+            if sta.nsl() == (network, station, location):
+                return sta
+        raise ValueError("station {network}.{station}.{location} not defined")
+
+    async def run(self) -> None:
         asyncio.create_task(self.monitor_station_seedlink())
 
-        async for station in self.seedlink.iter_streams(
+        async for station_data in self.seedlink.iter_streams(
             stations=self.station_selection,
             chunk_length=self.analysis_interval,
         ):
             lines = []
             for analyzer in self._analyzers:
-                analyzer_out = analyzer.analyze(station)
-                lines.extend(analyzer_out)
+                station = self.get_station(*station_data.nsl)
+                analyzer_result = analyzer.analyze(station, station_data)
+                lines.extend(analyzer_result)
 
             data = "\n".join(lines)
             print(data)
             await self.influx.write(data)
 
-    async def monitor_station_seedlink(self):
+    async def monitor_station_seedlink(self) -> NoReturn:
         logger.info("Starting Monitoring SeedLink delay task")
         while True:
             await asyncio.sleep(self.analysis_interval)

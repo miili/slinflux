@@ -6,7 +6,7 @@ from typing import Any
 
 from obspy import Trace, UTCDateTime
 from obspy.io.mseed.util import get_flags
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
 
 
 class SeedlinkStream(BaseModel):
@@ -37,7 +37,7 @@ class SeedlinkStream(BaseModel):
         )
 
 
-class SeedlinkData(BaseModel):
+class SeedLinkData(BaseModel):
     network: str
     station: str
     location: str
@@ -77,10 +77,14 @@ class SeedlinkData(BaseModel):
         return self.end_time - self.start_time
 
     @property
-    def channels(self) -> tuple:
+    def channels(self) -> tuple[str, ...]:
         return tuple(self._traces.keys())
 
-    def get_tail(self, length: timedelta) -> SeedlinkData:
+    @property
+    def nsl(self) -> tuple[str, str, str]:
+        return (self.network, self.station, self.location)
+
+    def get_tail(self, length: timedelta) -> SeedLinkData:
         if self.length < length:
             raise ValueError("Requested length is longer than available data")
 
@@ -122,6 +126,11 @@ class StationSelection(BaseModel):
     station: str = Field(default="SYRAU", max_length=5)
     location: str = Field(default="", max_length=2)
 
+    amplification: PositiveFloat = Field(
+        default=1.0,
+        description="Amplification factor for this station",
+    )
+
     lat: float = Field(default=50.45693, ge=-90.0, le=90.0)
     lon: float = Field(default=12.083366, ge=-180.0, le=180.0)
 
@@ -130,3 +139,6 @@ class StationSelection(BaseModel):
         if self.location:
             ret += f":{self.location}???"
         return ret
+
+    def nsl(self) -> tuple[str, str, str]:
+        return (self.network, self.station, self.location)
