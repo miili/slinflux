@@ -113,7 +113,7 @@ class Seedlink(BaseModel):
                         stats.location,
                     )
                 station_data.add_trace(trace, mseed=data)
-                station_data.station_meta.set_last_seen(station_data.end_time)
+                station_data.station_meta.set_last_data(station_data.end_time)
 
                 try:
                     st = station_data.get_tail(

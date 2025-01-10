@@ -45,6 +45,8 @@ class StationSelection(BaseModel):
     station: str = Field(default="SYRAU", max_length=5)
     location: str = Field(default="", max_length=2)
 
+    channel: str = Field(default="???", max_length=3)
+
     amplification: float = Field(
         default=1.0,
         description="Amplification factor for this station",
@@ -52,21 +54,19 @@ class StationSelection(BaseModel):
 
     lat: float = Field(default=50.45693, ge=-90.0, le=90.0)
     lon: float = Field(default=12.083366, ge=-180.0, le=180.0)
+    elevation: float = Field(default=321.0)
 
     _last_data: datetime = PrivateAttr(
         default=datetime.min.replace(tzinfo=timezone.utc)
     )
 
     def seedlink_str(self) -> str:
-        ret = f"{self.network}_{self.station}"
-        if self.location:
-            ret += f":{self.location}???"
-        return ret
+        return f"{self.network}_{self.station}:{self.location}{self.channel}"
 
     def nsl(self) -> tuple[str, str, str]:
         return (self.network, self.station, self.location)
 
-    def set_last_seen(self, time: datetime) -> None:
+    def set_last_data(self, time: datetime) -> None:
         self._last_data = time
 
     @property
