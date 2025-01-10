@@ -6,7 +6,7 @@ from typing import Any
 
 from obspy import Trace, UTCDateTime
 from obspy.io.mseed.util import get_flags
-from pydantic import BaseModel, Field, PositiveFloat, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class SeedlinkStream(BaseModel):
@@ -37,10 +37,45 @@ class SeedlinkStream(BaseModel):
         )
 
 
+class StationSelection(BaseModel):
+    network: str = Field(
+        default="1D",
+        max_length=2,
+    )
+    station: str = Field(default="SYRAU", max_length=5)
+    location: str = Field(default="", max_length=2)
+
+    amplification: float = Field(
+        default=1.0,
+        description="Amplification factor for this station",
+    )
+
+    lat: float = Field(default=50.45693, ge=-90.0, le=90.0)
+    lon: float = Field(default=12.083366, ge=-180.0, le=180.0)
+
+    _last_data: datetime = PrivateAttr(
+        default=datetime.min.replace(tzinfo=timezone.utc)
+    )
+
+    def seedlink_str(self) -> str:
+        ret = f"{self.network}_{self.station}"
+        if self.location:
+            ret += f":{self.location}???"
+        return ret
+
+    def nsl(self) -> tuple[str, str, str]:
+        return (self.network, self.station, self.location)
+
+    def set_last_seen(self, time: datetime) -> None:
+        self._last_data = time
+
+    @property
+    def last_data(self) -> datetime:
+        return self._last_data
+
+
 class SeedLinkData(BaseModel):
-    network: str
-    station: str
-    location: str
+    station_meta: StationSelection
 
     _traces: dict[str, Trace] = PrivateAttr(default_factory=dict)
     _mseed_bytes: dict[str, bytes] = PrivateAttr(default_factory=dict)
@@ -81,8 +116,20 @@ class SeedLinkData(BaseModel):
         return tuple(self._traces.keys())
 
     @property
+    def network(self) -> str:
+        return self.station_meta.network
+
+    @property
+    def station(self) -> str:
+        return self.station_meta.station
+
+    @property
+    def location(self) -> str:
+        return self.station_meta.location
+
+    @property
     def nsl(self) -> tuple[str, str, str]:
-        return (self.network, self.station, self.location)
+        return self.station_meta.nsl()
 
     def get_tail(self, length: timedelta) -> SeedLinkData:
         if self.length < length:
@@ -116,29 +163,3 @@ class SeedLinkData(BaseModel):
 
     def influx_end_time(self) -> int:
         return int(self.end_time.timestamp() * 1e9)
-
-
-class StationSelection(BaseModel):
-    network: str = Field(
-        default="1D",
-        max_length=2,
-    )
-    station: str = Field(default="SYRAU", max_length=5)
-    location: str = Field(default="", max_length=2)
-
-    amplification: PositiveFloat = Field(
-        default=1.0,
-        description="Amplification factor for this station",
-    )
-
-    lat: float = Field(default=50.45693, ge=-90.0, le=90.0)
-    lon: float = Field(default=12.083366, ge=-180.0, le=180.0)
-
-    def seedlink_str(self) -> str:
-        ret = f"{self.network}_{self.station}"
-        if self.location:
-            ret += f":{self.location}???"
-        return ret
-
-    def nsl(self) -> tuple[str, str, str]:
-        return (self.network, self.station, self.location)

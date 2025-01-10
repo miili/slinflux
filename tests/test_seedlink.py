@@ -21,6 +21,6 @@ def test_station():
 @pytest.mark.asyncio
 async def test_stream_traces():
     sl = Seedlink(host="geofon.gfz-potsdam.de")
-    async for st in sl.iter_streams():
+    async for st in sl.start():
         print(st)
         assert st

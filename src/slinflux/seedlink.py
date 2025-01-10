@@ -31,7 +31,12 @@ class Seedlink(BaseModel):
     host: str = "geofon.gfz-potsdam.de"
     port: PositiveInt = 18000
 
-    _stations: dict[tuple[str, str, str], SeedLinkData] = PrivateAttr(
+    station_selection: list[StationSelection] = [
+        StationSelection(network="1D", station="SYRAU", lat=50.45693, lon=12.083366),
+        StationSelection(network="1D", station="WBERG", lat=50.364212, lon=11.999245),
+    ]
+
+    _station_data: dict[tuple[str, str, str], SeedLinkData] = PrivateAttr(
         default_factory=dict
     )
 
@@ -45,25 +50,31 @@ class Seedlink(BaseModel):
 
         return [SeedlinkStream.from_line(line.decode()) for line in ret.splitlines()]
 
-    def get_station(self, network: str, station: str, location: str) -> SeedLinkData:
+    def get_station(
+        self, network: str, station: str, location: str
+    ) -> StationSelection:
         key = (network, station, location)
-        if key not in self._stations:
-            self._stations[key] = SeedLinkData(
-                network=network,
-                station=station,
-                location=location,
-            )
+        for sta in self.station_selection:
+            if key == sta.nsl():
+                return sta
+        raise KeyError("Cannot find station selection %s", ".".join(key))
 
-        return self._stations[key]
+    def get_station_data(
+        self, network: str, station: str, location: str
+    ) -> SeedLinkData:
+        key = (network, station, location)
+        if key not in self._station_data:
+            self._station_data[key] = SeedLinkData(station_meta=self.get_station(*key))
+        return self._station_data[key]
 
-    async def iter_streams(
+    async def start(
         self,
-        stations: list[StationSelection],
-        chunk_length: float = 20.0,
+        queue: asyncio.Queue,
+        chunk_length_seconds: float = 20.0,
     ) -> AsyncGenerator[SeedLinkData]:
-        selectors = ",".join(sta.seedlink_str() for sta in stations)
+        selectors = ",".join(sta.seedlink_str() for sta in self.station_selection)
 
-        logger.info(f"streaming: {selectors}")
+        logger.info("streaming stations %s from %s", selectors, self._slink_host)
         proc = await asyncio.subprocess.create_subprocess_exec(
             "slinktool",
             "-o",
@@ -90,13 +101,26 @@ class Seedlink(BaseModel):
                 if stats.channel in BLACKLISTED_CHANNELS:
                     continue
 
-                station = self.get_station(stats.network, stats.station, stats.location)
-                station.add_trace(trace, mseed=data)
+                try:
+                    station_data = self.get_station_data(
+                        stats.network, stats.station, stats.location
+                    )
+                except KeyError:
+                    logger.error(
+                        "Cannot get station %s.%s.%s",
+                        stats.network,
+                        stats.station,
+                        stats.location,
+                    )
+                station_data.add_trace(trace, mseed=data)
+                station_data.station_meta.set_last_seen(station_data.end_time)
 
                 try:
-                    st = station.get_tail(length=timedelta(seconds=chunk_length))
-                    print(st)
-                    yield st
+                    st = station_data.get_tail(
+                        length=timedelta(seconds=chunk_length_seconds)
+                    )
+                    logger.info("New stream: %s", st)
+                    await queue.put(st)
                 except ValueError:
                     continue
         except asyncio.CancelledError:

@@ -18,11 +18,14 @@ class InfluxDB(BaseModel):
     async def write(self, data: str):
         url = f"http://{self.host}:{self.port}/write?db={self.database}"
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url,
-                data=data,
-            ) as response:
-                try:
-                    response.raise_for_status()
-                except aiohttp.ClientResponseError as exc:
-                    logger.exception("InfluxDB write failed", exc_info=exc)
+            try:
+                async with session.post(
+                    url,
+                    data=data,
+                ) as response:
+                    try:
+                        response.raise_for_status()
+                    except aiohttp.ClientResponseError as exc:
+                        logger.exception("InfluxDB write failed", exc_info=exc)
+            except aiohttp.ClientConnectorError:
+                logger.error("Cannot connect to %s:%d", self.host, self.port)
