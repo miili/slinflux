@@ -88,7 +88,7 @@ class Seedlink(BaseModel):
 
         try:
             while True:
-                logger.debug("waiting for data")
+                logger.debug("waiting for data...")
                 data = await proc.stdout.read(RECORD_LENGTH)
                 trace_data = BytesIO(data)
                 st = read(trace_data, format="mseed")
@@ -119,7 +119,7 @@ class Seedlink(BaseModel):
                     st = station_data.get_tail(
                         length=timedelta(seconds=chunk_length_seconds)
                     )
-                    logger.info("New stream: %s", st)
+                    logger.debug("New stream: %s", st)
                     await queue.put(st)
                 except ValueError:
                     continue

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -7,6 +8,8 @@ from typing import Any
 from obspy import Trace, UTCDateTime
 from obspy.io.mseed.util import get_flags
 from pydantic import BaseModel, Field, PrivateAttr
+
+logger = logging.getLogger(__name__)
 
 
 class SeedlinkStream(BaseModel):
@@ -47,6 +50,11 @@ class StationSelection(BaseModel):
 
     channel: str = Field(default="???", max_length=3)
 
+    tags: dict[str, str] = Field(
+        default_factory=dict,
+        description="Tags for this station",
+    )
+
     amplification: float = Field(
         default=1.0,
         description="Amplification factor for this station",
@@ -68,6 +76,9 @@ class StationSelection(BaseModel):
 
     def set_last_data(self, time: datetime) -> None:
         self._last_data = time
+
+    def get_influx_tags(self) -> str:
+        return ",".join(f"{k}={v}" for k, v in self.tags.items())
 
     @property
     def last_data(self) -> datetime:
@@ -159,7 +170,11 @@ class SeedLinkData(BaseModel):
             )
 
     def get_timing_quality(self, channel: str) -> float:
-        return float(self._get_flags(channel)["timing_quality"]["max"])
+        try:
+            return float(self._get_flags(channel)["timing_quality"]["max"])
+        except Exception:
+            logger.error("cannot get timing quality")
+            return 0.0
 
     def influx_end_time(self) -> int:
         return int(self.end_time.timestamp() * 1e9)

@@ -57,7 +57,7 @@ class SLInflux(BaseModel):
                 lines.extend(analyzer_result)
 
             data = "\n".join(lines)
-            logger.info(data)
+            logger.debug(data)
             await self.influx.write(data)
 
     async def monitor_seedlink_delay(self) -> NoReturn:
@@ -82,5 +82,5 @@ class SLInflux(BaseModel):
                 line_protocol.append(line)
 
             data = "\n".join(line_protocol)
-            logger.info(data)
+            logger.debug(data)
             await self.influx.write(data)
